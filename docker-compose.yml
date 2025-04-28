@@ -7,11 +7,10 @@ services:
       - db
       - redis
     environment:
-      APP_URL: 'http://localhost:3000'
-      APP_SECRET: 'REPLACE_WITH_LONG_SECRET'
-      DATABASE_URL: 'postgresql://docmost:STRONG_DB_PASSWORD@db:5432/docmost?schema=public'
+      APP_URL: 'https://docs.apexohio.net'
+      APP_SECRET: 'This-is-the-secret-key-for-self-hosted-document-management-system'
+      DATABASE_URL: 'postgresql://docmost:docmost123@db:5432/docmost'
       REDIS_URL: 'redis://redis:6379'
-
       NODE_ENV: ${NODE_ENV}
       STORAGE_TYPE: ${STORAGE_TYPE}
       MAIL_DRIVER: ${MAIL_DRIVER}
@@ -29,30 +28,42 @@ services:
       SMTP_TLS_CIPHERS: 'TLS_AES_256_GCM_SHA384'
       SMTP_POOL: 'true'
       SMTP_RATE_LIMIT: '5'
-      
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
     volumes:
       - docmost:/app/data/storage
+    restart: unless-stopped
 
   db:
-    image: postgres:16-alpine
+    image: postgres:15
     environment:
-      POSTGRES_DB: docmost
       POSTGRES_USER: docmost
-      POSTGRES_PASSWORD: STRONG_DB_PASSWORD
-    restart: unless-stopped
+      POSTGRES_PASSWORD: docmost123
+      POSTGRES_DB: docmost
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
-    image: redis:7.2-alpine
-    restart: unless-stopped
+    image: redis:alpine
     volumes:
-      - redis_data:/data
+      - redis:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - docmost
+    restart: unless-stopped
 
 volumes:
   docmost:
-  db_data:
-  redis_data:
+  db:
+  redis:
+  caddy_data:
+  caddy_config:
