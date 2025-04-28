@@ -11,6 +11,25 @@ services:
       APP_SECRET: 'REPLACE_WITH_LONG_SECRET'
       DATABASE_URL: 'postgresql://docmost:STRONG_DB_PASSWORD@db:5432/docmost?schema=public'
       REDIS_URL: 'redis://redis:6379'
+
+      NODE_ENV: ${NODE_ENV}
+      STORAGE_TYPE: ${STORAGE_TYPE}
+      MAIL_DRIVER: ${MAIL_DRIVER}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_IGNORETLS: ${SMTP_IGNORETLS}
+
+      MAIL_REPLY_TO: ${MAIL_FROM_ADDRESS}
+      SMTP_DKIM_ENABLED: 'true'
+      SMTP_TLS_CIPHERS: 'TLS_AES_256_GCM_SHA384'
+      SMTP_POOL: 'true'
+      SMTP_RATE_LIMIT: '5'
+      
     ports:
       - "3000:3000"
     restart: unless-stopped

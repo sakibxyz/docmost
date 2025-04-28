@@ -28,6 +28,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { QueueJob, QueueName } from '../../../integrations/queue/constants';
 import { Queue } from 'bullmq';
 import { EnvironmentService } from '../../../integrations/environment/environment.service';
+import * as nodemailer from 'nodemailer';
+import { ConfigService } from '@nestjs/config';
+
+interface SendEmailParams {
+  inviteeEmail: string;
+  subject: string;
+  emailTemplate: {
+    html: string;
+  };
+}
 
 @Injectable()
 export class WorkspaceInvitationService {
@@ -38,6 +48,7 @@ export class WorkspaceInvitationService {
     private mailService: MailService,
     private domainService: DomainService,
     private tokenService: TokenService,
+    private configService: ConfigService,
     @InjectKysely() private readonly db: KyselyDB,
     @InjectQueue(QueueName.BILLING_QUEUE) private billingQueue: Queue,
     private readonly environmentService: EnvironmentService,
@@ -148,7 +159,7 @@ export class WorkspaceInvitationService {
           .returningAll()
           .execute();
       });
-    } catch (err) {
+    }  catch (err) {
       this.logger.error(`createInvitation - ${err}`);
       throw new BadRequestException(
         'An error occurred while processing the invitations.',
@@ -157,7 +168,9 @@ export class WorkspaceInvitationService {
 
     // do not send code to do nothing users
     if (invites) {
+      this.logger.log('Starting to send invitations');
       invites.forEach((invitation: WorkspaceInvitation) => {
+        this.logger.log(`Sending invitation to: ${invitation.email}`);
         this.sendInvitationMail(
           invitation.id,
           invitation.email,
@@ -165,7 +178,7 @@ export class WorkspaceInvitationService {
           authUser.name,
           workspace.hostname,
         );
-      });
+      }); 
     }
   }
 
@@ -244,6 +257,7 @@ export class WorkspaceInvitationService {
       if (err.message.includes('unique constraint')) {
         throw new BadRequestException('Invitation already accepted');
       }
+
       throw new BadRequestException(
         'Failed to accept invitation. An error occurred.',
       );
@@ -265,12 +279,20 @@ export class WorkspaceInvitationService {
         invitedUserEmail: newUser.email,
       });
 
-      await this.mailService.sendToQueue({
-        to: invitedByUser.email,
+      // New code added by @Rijwan Hossain 
+      await this.sendEmail({
+        inviteeEmail: invitedByUser.email, 
         subject: `${newUser.name} has accepted your Docmost invite`,
-        template: emailTemplate,
-      });
-    }
+        emailTemplate
+      }); 
+
+      // old codebase
+      // await this.mailService.sendToQueue({
+      //   to: invitedByUser.email,
+      //   subject: `${newUser.name} has accepted your Docmost invite`,
+      //   template: emailTemplate,
+      // });
+    } 
 
     if (this.environmentService.isCloud()) {
       await this.billingQueue.add(QueueJob.STRIPE_SEATS_SYNC, { workspaceId });
@@ -340,7 +362,8 @@ export class WorkspaceInvitationService {
     return `${this.domainService.getUrl(hostname)}/invites/${invitationId}?token=${inviteToken}`;
   }
 
-  async sendInvitationMail(
+  // old code for invitation email send
+  async sendInvitationMail_Old_Unused_Codebase(
     invitationId: string,
     inviteeEmail: string,
     inviteToken: string,
@@ -363,4 +386,67 @@ export class WorkspaceInvitationService {
       template: emailTemplate,
     });
   }
-}
+
+  // New modified codebase 
+  // Removed Queue
+  // Direct sending emails 
+  // by @Rijwan Hossain 
+  async sendInvitationMail(
+    invitationId: string,
+    inviteeEmail: string,
+    inviteToken: string,
+    invitedByName: string,
+    hostname?: string,
+  ): Promise<void> {
+    try {
+      const inviteLink = await this.buildInviteLink({
+        invitationId,
+        inviteToken,
+        hostname,
+      });
+  
+      const emailTemplate = InvitationEmail({
+        inviteLink,
+      });
+  
+      await this.sendEmail({
+        inviteeEmail, 
+        subject: `${invitedByName} invited you to Docmost`, 
+        emailTemplate
+      }); 
+    }  catch (error) {
+      this.logger.error(`Failed to send invitation email to ${inviteeEmail}:`, error);
+      throw new BadRequestException('Failed to send invitation email');
+    } 
+  } 
+
+  private async sendEmail({inviteeEmail, subject, emailTemplate}: SendEmailParams) { 
+    try {
+      // Create nodemailer transporter
+      const transporter = nodemailer.createTransport({
+        host: this.configService.get('SMTP_HOST'),
+        port: this.configService.get<number>('SMTP_PORT'),
+        secure: this.configService.get('SMTP_SECURE') === 'true',
+        ignoreTLS: this.configService.get('SMTP_IGNORETLS') === 'true',
+        auth: {
+          user: this.configService.get('SMTP_USERNAME'),
+          pass: this.configService.get('SMTP_PASSWORD')
+        }
+      }); 
+
+      // Configure mail options
+      const mailOptions = {
+        from: `${this.configService.get('MAIL_FROM_NAME')} <${this.configService.get('MAIL_FROM_ADDRESS')}>`,
+        to: inviteeEmail,
+        subject: subject,
+        html: emailTemplate.html
+      };
+
+      // Send email
+      await transporter.sendMail(mailOptions);
+      this.logger.log(`Invitation email sent successfully to: ${inviteeEmail}`);
+    }  catch (error) {
+      throw new BadRequestException('Failed to send invitation email');
+    }
+  }
+} 
